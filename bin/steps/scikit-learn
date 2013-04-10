@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+# This script serves as the skikit-learn build step of the
+# [**Python Buildpack**](https://github.com/heroku/heroku-buildpack-python) 
+# compiler. 
+# 
+# A [buildpack](http://devcenter.heroku.com/articles/buildpacks) is an 
+# adapter between a Python application and Heroku's runtime.
+#
+# This script is invoked by [`bin/compile`](/).
+
+# If skikit-learn exists within requirements.txt then use binaries.
+if (grep -iq -e "scikit-learn" setup.py) then
+  echo "-----> Noticed scikit-learn. Installing..."
+  cd .heroku
+  echo "-----> heroku contents: $(ls)"
+
+  ## check whether this has happened already
+
+  if [ -d "venv/lib/python2.7/site-packages/scikit-learn*" ]; then
+      echo "-----> Using cached scikit-learn."
+    else
+      echo "-----> Installing via pip, but setting environment vars first."
+      export BLAS=$(pwd)/vendor/lib/atlas-base/atlas/libblas.a
+      export LAPACK=$(pwd)/vendor/lib/atlas-base/atlas/liblapack.a
+      export ATLAS=$(pwd)/vendor/lib/atlas-base/libatlas.a
+      export LIBRARY_PATH=$(pwd)/vendor/lib:$(pwd)/lib/atlas-base:$(pwd)/lib/atlas-base/atlas
+      export LD_LIBRARY_PATH=$(pwd)/vendor/lib:$(pwd)/vendor/lib/atlas-base:$(pwd)/vendor/lib/atlas-base/atlas
+
+      # Install latest from git
+      #pip install --use-mirrors scikit-learn
+      pip install -e git+https://github.com/scikit-learn/scikit-learn.git#egg=scikit-learn
+    fi
+
+  cd ..
+
+fi
+
+
+

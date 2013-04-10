@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+# This script serves as the build step for scipy/numpy and other packages
+# that  depend on numpy and sciypy for the
+# [**Python Buildpack**](https://github.com/heroku/heroku-buildpack-python) 
+# compiler. 
+# 
+# A [buildpack](http://devcenter.heroku.com/articles/buildpacks) is an 
+# adapter between a Python application and Heroku's runtime.
+#
+# This script is invoked by [`bin/compile`](/).
+VENDORED_GIT_NAME="npscipy-binaries"
+VENDORED_GIT_REPO="https://github.com/wyn/$VENDORED_GIT_NAME.git"
+# The location of the pre-compiled atlas/lapack/blas/gfortran binaries.
+VENDORED_BINARIES="npscipy"
+
+PACKAGES=("numpy" "scipy" "sklearn")
+DEFAULT_VERSIONS=("1.7.0" "0.11.0" "0.13.1")
+
+if (grep -iq -e "numpy" -e "scipy" requirements.txt) then
+  echo "-----> Noticed numpy/scipy/scikit-learn. Bootstrapping prebuilt binaries."
+  cd .heroku
+  ## check whether this has happened already
+  if [ -d "vendor/lib/atlas-base" ]; then
+    echo "-----> Using cached binaries for atlas."
+  else
+    git clone -n $VENDORED_GIT_REPO --depth 1
+    ## set BLAS/LAPACK/ATLAS
+    echo "-----> Creating/downloading binaries."
+    # Download and extract everything into target vendor directory.
+    #git clone ${VENDORED_GIT_REPO} > /dev/null
+    cd $VENDORED_GIT_NAME
+    git checkout HEAD $VENDORED_BINARIES.tar.gz
+    cd ..
+    tar xf "$VENDORED_GIT_NAME/$VENDORED_BINARIES.tar.gz"
+    echo "-----> heroku contents: $(ls)"
+    echo "-----> heroku binaries contents: $(ls ${VENDORED_GIT_NAME})"
+  fi # cached
+  export BLAS=$(pwd)/vendor/lib/atlas-base/atlas/libblas.a
+  export LAPACK=$(pwd)/vendor/lib/atlas-base/atlas/liblapack.a
+  export ATLAS=$(pwd)/vendor/lib/atlas-base/libatlas.a
+  export LIBRARY_PATH=$(pwd)/vendor/lib:$(pwd)/lib/atlas-base:$(pwd)/lib/atlas-base/atlas
+  export LD_LIBRARY_PATH=$(pwd)/vendor/lib:$(pwd)/lib/atlas-base:$(pwd)/lib/atlas-base/atlas
+  
+  for ((i=0;i<${#PACKAGES[@]};i++))
+  do
+    PACKAGE=$PACKAGES[$i]
+    if (grep -iqe "$PACKAGE" ../requirements.txt) then
+      VERSION=`grep -ie "$PACKAGE" ../requirements.txt | awk -F"==" '{print $2}'` 
+      CACHED_VERSION=`source venv/bin/activate; python -c "try: from $PACKAGE import __version__; print __version__;
+except: print '0.0.0'"`
+      if [ $VERSION = $CACHED_VERSION ]; then
+        echo "-----> Using cached version of $PACKAGE-$VERSION"
+      else
+        echo "-----> Creating/downloading $PACKAGE-$VERSION."
+
+        cd $VENDORED_GIT_NAME
+        NAME="$PACKAGE-$VERSION"
+        git checkout HEAD $NAME.tar.gz
+
+        FOUND=0
+        if (file $NAME.tar.gz | grep -iqe "gzip compressed data") then
+          FOUND=1
+        else
+          DEFAULT_VERSION=$DEFAULT_VERSIONS[$i]
+          echo "Could not find binaries for $NAME-$VERSION. Using default: $DEFAULT_VERSION"
+          NAME="$PACKAGE-$DEFAULT_VERSION"
+          git checkout HEAD $NAME.tar.gz
+        fi
+
+        cd ..
+        tar xf "$VENDORED_GIT_NAME/$NAME.tar.gz"
+      fi
+    fi
+  done
+  cd ..
+fi
