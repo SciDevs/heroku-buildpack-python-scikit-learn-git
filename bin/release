@@ -3,21 +3,36 @@
 
 BIN_DIR=$(cd $(dirname $0); pwd) # absolute path
 BUILD_DIR=$1
-
-MANAGE_FILE=$(cd $BUILD_DIR && find . -maxdepth 3 -type f -name 'manage.py' | head -1)
-MANAGE_FILE=${MANAGE_FILE:2}
+NAME=$($BIN_DIR/detect $BUILD_DIR) || exit 1
 
 cat <<EOF
 ---
 config_vars:
-
+  PATH: /app/.heroku/venv/bin:/bin:/usr/local/bin:/usr/bin
+  PYTHONUNBUFFERED: true
+  LIBRARY_PATH: /app/.heroku/vendor/lib:/app/.heroku/vendor/lib/atlas-base:/app/.heroku/vendor/lib/atlas-base/atlas
+  LD_LIBRARY_PATH: /app/.heroku/vendor/lib:/app/.heroku/vendor/lib/atlas-base:/app/.heroku/vendor/lib/atlas-base/atlas
+  LANG: en_US.UTF-8
+  PYTHONHASHSEED: random
+  PYTHONHOME: /app/.heroku/venv/
+  PYTHONPATH: /app/
+  BLAS: /app/.heroku/vendor/lib/atlas-base/atlas/libblas.a
+  LAPACK: /app/.heroku/vendor/lib/atlas-base/atlas/liblapack.a
+  ATLAS: /app/.heroku/vendor/lib/atlas-base/libatlas.a
 EOF
 
 
-if [[ $MANAGE_FILE ]]; then
+[ "$NAME" = "Python/Django" ] || exit 0
+
+MANAGE_FILE=$(cd $BUILD_DIR && find . -maxdepth 2 -type f -name 'manage.py' | head -1)
+MANAGE_FILE=${MANAGE_FILE:2}
+PROJECT=$(dirname $MANAGE_FILE)
+
 cat <<EOF
 
 addons:
   shared-database:5mb
+
+default_process_types:
+  web:      python $PROJECT/manage.py runserver 0.0.0.0:\$PORT --noreload
 EOF
-fi
